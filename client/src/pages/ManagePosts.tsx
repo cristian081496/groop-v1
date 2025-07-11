@@ -1,20 +1,28 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MainLayout } from "../components/layout";
-import { deletePost, togglePinPost } from "../services/api";
+import { deletePost, togglePinPost, getPosts } from "../services/api";
 import { Post } from "../types/post";
 import { useUser } from "../store/useUser";
-import { FaThumbsUp, FaEye, FaEdit, FaTrash, FaThumbtack } from 'react-icons/fa';
-import { usePosts } from "../hooks/usePosts";
 import SectionHeader from "../components/common/SectionHeader";
 import Alert from "../components/common/Alert";
 import LoadMoreButton from "../components/common/LoadMoreButton";
+import AdminPostCard from "../components/posts/AdminPostCard";
 
 const ManagePosts = () => {
   const navigate = useNavigate();
   const { userProfile, isAdmin } = useUser();
   const [success, setSuccess] = useState<string | null>(null);
   const [processingPostId, setProcessingPostId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'own'>('all');
+  
+  // Posts state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [pinnedPosts, setPinnedPosts] = useState<Post[]>([]);
+  const [lastId, setLastId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   
   // Use effect to redirect if not admin
   useEffect(() => {
@@ -23,13 +31,45 @@ const ManagePosts = () => {
     }
   }, [isAdmin, navigate]);
   
-  const { 
-    posts, 
-    loading, 
-    error, 
-    hasMore, 
-    fetchPosts 
-  } = usePosts();
+  // Function to fetch posts
+  const fetchPosts = async (reset = false) => {
+    if (loading && !reset) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const lastPostId = reset ? undefined : lastId || undefined;
+      const userId = activeTab === 'own' ? userProfile?.uid : undefined;
+      const response = await getPosts(9, lastPostId, undefined, userId);
+      
+      // Separate pinned posts from regular posts
+      const pinned = response.posts.filter((post) => post.pinned);
+      const regular = response.posts.filter((post) => !post.pinned);
+      
+      if (reset) {
+        setPinnedPosts(pinned);
+        setPosts(regular);
+      } else {
+        // Only append regular posts, replace pinned posts
+        setPinnedPosts(pinned);
+        setPosts(prev => [...prev, ...regular]);
+      }
+      
+      setLastId(response.lastId);
+      setHasMore(response.hasMore);
+    } catch (err) {
+      console.error("Error fetching posts:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch posts");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Load posts when tab changes
+  useEffect(() => {
+    fetchPosts(true);
+  }, [activeTab, userProfile?.uid]);
 
   const handlePinToggle = async (post: Post) => {
     setProcessingPostId(post.id);
@@ -37,6 +77,8 @@ const ManagePosts = () => {
       await togglePinPost(post.id, !post.pinned);
       // Update the post in the list
       setSuccess(`Post ${post.title} has been ${post.pinned ? 'unpinned' : 'pinned'}`);
+      // Reload posts to reflect the changes
+      fetchPosts(true);
     } catch (err) {
       console.error("Error toggling pin status:", err);
     } finally {
@@ -50,6 +92,8 @@ const ManagePosts = () => {
     try {
       await deletePost(postId);
       setSuccess(`Post has been deleted`);
+      // Reload posts to reflect the changes
+      fetchPosts(true);
     } catch (err) {
       console.error("Error deleting post:", err);
     }
@@ -77,6 +121,26 @@ const ManagePosts = () => {
             }
           />
 
+          {/* Tabs */}
+          <div className="flex border-b mb-6">
+            <button
+              className={`px-4 py-2 font-medium ${activeTab === 'all' 
+                ? 'text-blue-600 border-b-2 border-blue-600' 
+                : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('all')}
+            >
+              All Posts
+            </button>
+            <button
+              className={`px-4 py-2 font-medium ${activeTab === 'own' 
+                ? 'text-blue-600 border-b-2 border-blue-600' 
+                : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('own')}
+            >
+              My Posts
+            </button>
+          </div>
+          
           {error && <Alert type="error" message={error} />}
           {success && <Alert type="success" message={success} />}
 
@@ -89,7 +153,7 @@ const ManagePosts = () => {
             </div>
           )}
 
-          {!loading && posts.length === 0 && !error && (
+          {!loading && posts.length === 0 && pinnedPosts.length === 0 && !error && (
             <div className="bg-white shadow rounded-lg p-6 text-center">
               <p className="text-gray-500 mb-4">No posts found</p>
               <Link to="/create-post" className="btn-primary px-4 py-2 rounded-md text-sm">
@@ -98,106 +162,50 @@ const ManagePosts = () => {
             </div>
           )}
 
-          {!loading && posts.length > 0 && (
-            <div className="space-y-4">
-              {posts.map(post => {
-              const isAuthor = post.authorId === userProfile?.uid;
-              const canModify = isAuthor || isAdmin;
-              
-              return (
-                <div key={post.id} className={`bg-white shadow rounded-lg overflow-hidden ${processingPostId === post.id ? 'opacity-70' : ''}`}>
-                  <div className="flex flex-col md:flex-row">
-                    {post.imageURL && (
-                      <div className="md:w-1/4 h-48 md:h-auto">
-                        <img 
-                          src={post.imageURL} 
-                          alt={post.title} 
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                    <div className={`p-6 flex-1 ${!post.imageURL ? 'w-full' : ''}`}>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h2 className="text-xl font-semibold mb-2">
-                            <Link to={`/posts/${post.id}`} className="hover:text-primary">
-                              {post.title}
-                            </Link>
-                          </h2>
-                          <p className="text-gray-600 mb-4 line-clamp-2">
-                            {post.content}
-                          </p>
-                        </div>
-                        {post.pinned && (
-                          <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                            Pinned
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm text-gray-500">
-                        <div>
-                          <span>By {post.authorName || 'Unknown'}</span>
-                          <span className="mx-2">•</span>
-                          <span>{new Date(post.createdAt).toLocaleDateString()}</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="flex items-center">
-                            <FaThumbsUp className="mr-1.5 text-blue-500" /> {post.likeCount || 0}
-                          </span>
-                          <span className="flex items-center">
-                            <FaEye className="mr-1.5 text-gray-500" /> {post.views || 0}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-4 flex space-x-3">
-                        {isAuthor && (
-                          <Link
-                            to={`/edit-post/${post.id}`}
-                            className="flex items-center text-sm text-blue-600 hover:text-blue-800"
-                          >
-                            <FaEdit className="mr-1" /> Edit
-                          </Link>
-                        )}
-                        {canModify && (
-                          <button
-                            onClick={() => handleDeletePost(post.id)}
-                            className="flex items-center text-sm text-red-600 hover:text-red-800"
-                            disabled={processingPostId === post.id}
-                          >
-                            <FaTrash className="mr-1" /> Delete
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button
-                            onClick={() => handlePinToggle(post)}
-                            className="flex items-center text-sm text-gray-600 hover:text-gray-800"
-                            disabled={processingPostId === post.id}
-                          >
-                            {post.pinned ? (
-                              <>
-                                <FaThumbtack className="mr-1" /> Unpin
-                              </>
-                            ) : (
-                              <>
-                                <FaThumbtack className="mr-1" /> Pin
-                              </>
-                            )}
-                          </button>
-                        )}
-                        <Link
-                          to={`/posts/${post.id}`}
-                          className="ml-auto text-sm text-gray-600 hover:text-gray-800"
-                        >
-                          View Post →
-                        </Link>
-                      </div>
-                    </div>
+          {!loading && (posts.length > 0 || pinnedPosts.length > 0) && (
+            <div className="space-y-6">
+              {/* Pinned Posts Section */}
+              {pinnedPosts.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Pinned Posts</h3>
+                  <div className="space-y-4">
+                    {pinnedPosts.map(post => (
+                      <AdminPostCard
+                        key={post.id}
+                        post={post}
+                        userProfile={userProfile}
+                        isAdmin={isAdmin}
+                        processingPostId={processingPostId}
+                        onPinToggle={handlePinToggle}
+                        onDelete={handleDeletePost}
+                        isPinned={true}
+                      />
+                    ))}
                   </div>
                 </div>
-              );
-              })}
+              )}
+              
+              {/* Regular Posts Section */}
+              {posts.length > 0 && (
+                <div>
+                  {pinnedPosts.length > 0 && (
+                    <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Regular Posts</h3>
+                  )}
+                  <div className="space-y-4">
+                    {posts.map(post => (
+                      <AdminPostCard
+                        key={post.id}
+                        post={post}
+                        userProfile={userProfile}
+                        isAdmin={isAdmin}
+                        processingPostId={processingPostId}
+                        onPinToggle={handlePinToggle}
+                        onDelete={handleDeletePost}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
