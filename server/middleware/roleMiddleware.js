@@ -20,14 +20,15 @@ function checkRole(requiredRole) {
       const userData = userDoc.data();
 
       // Check if user has the required role
-      if (userData.role !== requiredRole) {
+      // Admin role can access any route
+      if (userData.role === 'admin' || userData.role === requiredRole) {
+        // User has the required role, proceed
+        next();
+      } else {
         return res.status(403).json({
           error: `Access denied. ${requiredRole} role required.`,
         });
       }
-
-      // User has the required role, proceed
-      next();
     } catch (error) {
       console.error("Role verification error:", error);
       res.status(500).json({ error: "Internal server error during role verification" });

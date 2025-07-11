@@ -31,8 +31,8 @@ const UserTable = ({ users, processingUser, onRoleChange }: UserTableProps) => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {users.map(user => (
-              <tr key={user.uid}>
+            {users.map((user, index) => (
+              <tr key={user.uid || `user-${index}`}>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200">
