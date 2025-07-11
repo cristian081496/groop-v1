@@ -15,6 +15,10 @@ client/.env
 .env.test.local
 .env.production.local
 
+# Firebase credentials
+server/serviceAccountKey.json
+**/serviceAccountKey.json
+
 # Build outputs
 /dist
 /build
