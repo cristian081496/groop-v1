@@ -80,6 +80,15 @@ const ManagePosts = () => {
           {error && <Alert type="error" message={error} />}
           {success && <Alert type="success" message={success} />}
 
+          {loading && (
+            <div className="bg-white shadow rounded-lg p-6 text-center">
+              <div className="flex justify-center items-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+              <p className="text-gray-500 mt-4">Loading posts...</p>
+            </div>
+          )}
+
           {!loading && posts.length === 0 && !error && (
             <div className="bg-white shadow rounded-lg p-6 text-center">
               <p className="text-gray-500 mb-4">No posts found</p>
@@ -89,8 +98,9 @@ const ManagePosts = () => {
             </div>
           )}
 
-          <div className="space-y-4">
-            {posts.map(post => {
+          {!loading && posts.length > 0 && (
+            <div className="space-y-4">
+              {posts.map(post => {
               const isAuthor = post.authorId === userProfile?.uid;
               const canModify = isAuthor || isAdmin;
               
@@ -187,8 +197,9 @@ const ManagePosts = () => {
                   </div>
                 </div>
               );
-            })}
-          </div>
+              })}
+            </div>
+          )}
           
           {hasMore && (
             <div className="px-6 py-4 border-t border-gray-200">
