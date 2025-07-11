@@ -10,6 +10,11 @@ https://groop-v1.vercel.app/
 
 Use these credentials to test the application:
 
+### Regular User
+
+- **Email**: user@groop.com
+- **Password**: user123
+
 ### Admin User
 
 - **Email**: admin@groop.com
@@ -30,11 +35,6 @@ Use these credentials to test the application:
 - **User Management**: View and manage user roles (promote to admin or demote to regular user)
 - **Post Management**: Pin important posts to the top, delete any post
 - **Content Moderation**: Admins can edit or remove inappropriate content
-
-### Regular User
-
-- **Email**: user@groop.com
-- **Password**: user123
 
 ## Setup Instructions
 
