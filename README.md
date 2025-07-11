@@ -2,6 +2,19 @@
 
 Groop social posting platform built with React, Firebase, and Node.js. It features user authentication, post creation and management, admin controls, and more.
 
+# Demo site
+
+https://groop-v1.vercel.app/
+
+## Demo Users
+
+Use these credentials to test the application:
+
+### Admin User
+
+- **Email**: admin@groop.com
+- **Password**: admin123
+
 ## Features
 
 ### User Features
@@ -17,15 +30,6 @@ Groop social posting platform built with React, Firebase, and Node.js. It featur
 - **User Management**: View and manage user roles (promote to admin or demote to regular user)
 - **Post Management**: Pin important posts to the top, delete any post
 - **Content Moderation**: Admins can edit or remove inappropriate content
-
-## Demo Users
-
-Use these credentials to test the application:
-
-### Admin User
-
-- **Email**: admin@groop.com
-- **Password**: admin123
 
 ### Regular User
 
@@ -155,8 +159,143 @@ Use these credentials to test the application:
 
    - `client/.env` - Frontend Firebase configuration
    - `.env` - Server configuration
-   - `serviceAccountKey.json` - Firebase Admin SDK credentials
 
 3. **Obtaining Firebase credentials**:
    - Firebase Console → Project Settings → General → Your Apps → SDK setup and configuration
    - For the service account key: Firebase Console → Project Settings → Service accounts → Generate new private key
+
+## Firebase Security Rules
+
+### Firestore Rules
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // User profiles
+    match /users/{userId} {
+      // Users can read their own profile, admins can read all profiles
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Users can create their own profile
+      allow create: if isOwner(userId);
+      
+      // Users can update their own profile, but not change role
+      // Admins can update any profile including role
+      allow update: if (isOwner(userId) && 
+                       !("role" in request.resource.data) || 
+                       request.resource.data.role == resource.data.role) || 
+                       isAdmin();
+                       
+      // Only admins can delete profiles
+      allow delete: if isAdmin();
+    }
+    
+    // Posts
+    match /posts/{postId} {
+      // Anyone authenticated can read posts
+      allow read: if isAuthenticated();
+      
+      // Users can create posts with their own userId as author
+      allow create: if isAuthenticated() && 
+                     request.resource.data.authorId == request.auth.uid;
+      
+      // Only post author or admin can update or delete
+      allow update, delete: if isAuthenticated() && 
+                             (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+    
+    // Comments
+    match /comments/{commentId} {
+      // Anyone authenticated can read comments
+      allow read: if isAuthenticated();
+      
+      // Users can create comments with their own userId
+      allow create: if isAuthenticated() && 
+                     request.resource.data.userId == request.auth.uid;
+      
+      // Only comment author or admin can update or delete
+      allow update, delete: if isAuthenticated() && 
+                             (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // Allow admins to read all collections
+    match /{document=**} {
+      allow read: if isAdmin();
+    }
+  }
+}
+```
+
+### Storage Rules
+
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Profile images
+    match /profile-images/{userId}/{fileName} {
+      // Anyone can view profile images
+      allow read: if true;
+      
+      // Only the user can upload their own profile image
+      allow write: if isOwner(userId);
+      
+      // Only the user or admin can delete their profile image
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Post images
+    match /post-images/{postId}/{fileName} {
+      // Anyone can view post images
+      allow read: if true;
+      
+      // Users can upload post images when creating posts
+      allow create: if isAuthenticated();
+      
+      // Only post owner or admin can update or delete post images
+      // This requires a Firestore check to verify post ownership
+      allow update, delete: if 
+        isAuthenticated() && (
+          firestore.get(/databases/(default)/documents/posts/$(postId)).data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
